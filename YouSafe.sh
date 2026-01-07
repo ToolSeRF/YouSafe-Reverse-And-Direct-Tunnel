@@ -174,8 +174,67 @@ install_gost() {
   run_step "Installing prerequisites (git, wget, curl)" \
     bash -c "apt-get install -y git wget curl 2>&1 | tee -a /tmp/yousafe_install.log"
 
-  run_step "Running official GOST install script" \
-    bash -c "bash <(curl -fsSL https://github.com/go-gost/gost/raw/master/install.sh) 2>&1 | tee /tmp/yousafe_gost_install.log"
+  echo -e "${BOLD}${YELLOW}Select install source:${RESET}"
+  echo -e "${BOLD}1 install gost from yourself${RESET}"
+  echo -e "${BOLD}2 install from github${RESET}"
+  echo
+
+  local src_choice
+  read -rp "Choose [1-2] (default 2): " src_choice
+  [[ -z "$src_choice" ]] && src_choice="2"
+
+  if [[ "$src_choice" == "2" ]]; then
+    run_step "Running official GOST install script" \
+      bash -c "bash <(curl -fsSL https://github.com/go-gost/gost/raw/master/install.sh) 2>&1 | tee /tmp/yousafe_gost_install.log"
+
+  elif [[ "$src_choice" == "1" ]]; then
+    local tar_path tmpdir
+
+    read -rp "input binery file address (e.g. /root/gost.tar.gz): " tar_path
+    if [[ -z "$tar_path" || ! -f "$tar_path" ]]; then
+      add_notice "${BOLD}${RED}File not found: $tar_path${RESET}"
+      echo -e "${BOLD}${RED}Error:${RESET} File not found."
+      pause
+      return 0
+    fi
+
+    tmpdir="/tmp/gost-self-install-$$"
+    rm -rf "$tmpdir"
+    mkdir -p "$tmpdir"
+
+    run_step "Extracting gost archive" \
+      bash -c "tar -xzf \"$tar_path\" -C \"$tmpdir\" 2>&1 | tee -a /tmp/yousafe_gost_install.log"
+
+    if [[ -f "$tmpdir/gost" ]]; then
+      run_step "Installing gost binary to /usr/local/bin/gost" \
+        bash -c "chmod +x \"$tmpdir/gost\" && install -m 0755 \"$tmpdir/gost\" /usr/local/bin/gost 2>&1 | tee -a /tmp/yousafe_gost_install.log"
+    else
+      local found
+      found="$(find "$tmpdir" -maxdepth 3 -type f -name gost 2>/dev/null | head -n1)"
+      if [[ -n "$found" && -f "$found" ]]; then
+        run_step "Installing gost binary to /usr/local/bin/gost" \
+          bash -c "chmod +x \"$found\" && install -m 0755 \"$found\" /usr/local/bin/gost 2>&1 | tee -a /tmp/yousafe_gost_install.log"
+      else
+        add_notice "${BOLD}${RED}gost binary not found inside archive.${RESET}"
+        echo -e "${BOLD}${RED}Error:${RESET} gost binary not found after extract."
+        echo -e "${BOLD}${YELLOW}Tip:${RESET} Check extracted files: ls -lah \"$tmpdir\""
+        rm -rf "$tmpdir"
+        pause
+        return 0
+      fi
+    fi
+
+    rm -rf "$tmpdir" >/dev/null 2>&1 || true
+
+    run_step "Checking gost version" \
+      bash -c "/usr/local/bin/gost -V 2>&1 | tee -a /tmp/yousafe_gost_install.log"
+
+  else
+    add_notice "${BOLD}${RED}Invalid choice.${RESET}"
+    echo -e "${BOLD}${RED}Error:${RESET} Invalid choice."
+    pause
+    return 0
+  fi
 
   echo -e "\n${BOLD}${GREEN}DONE: GOST installation finished.${RESET}"
   add_notice "${BOLD}${GREEN}GOST installation finished.${RESET}"
